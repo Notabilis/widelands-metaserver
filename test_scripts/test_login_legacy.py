@@ -42,27 +42,19 @@ def expect(got, should):
 
 # Logs in with the given name. If a password is given, try a registered login.
 # If expName or expRang is given, check the result
-def login_v6(name, pwd="", expName="", expRang=""):
-    # Should result in: "\x00\x25LOGIN\x004\x00Pete\x00test[r1]\x00false\x00abcdef\x00"
+# Does a legacy login
+def login_legacy(name, pwd="", expName="", expRang=""):
+    # Should result in: "\x00\x25LOGIN\x000\x00Pete\x00test[r1]\x00false\x00abcdef\x00"
     c = Conn()
-    c.s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-    c.s.connect((TCP_IP6, TCP_PORT))
-    msg="LOGIN\x004\x00"+name+"\x00test[r1]\x00"
+    c.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    c.s.connect((TCP_IP, TCP_PORT))
+    msg="LOGIN\x000\x00"+name+"\x00test[r1]\x00"
     if pwd == "":
-        rand=''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(16))
-        c.secret = sha1(rand)
-        msg+="false\x00"+c.secret+"\x00"
+        msg+="false\x00"
     else:
-        c.secret = sha1(pwd)
-        msg+="true\x00\x00"
+        msg+="true\x00"+pwd+"\x00"
     send_with_length(c.s, msg)
-    # Login request send. If we have a password, expect the challenge
-    if pwd != "":
-        data = c.s.recv(BUFFER_SIZE)
-        lines = data[2:].split('\x00')
-        expect(lines[0], "PWD_CHALLENGE")
-        msg = "PWD_CHALLENGE\x00" + sha1(lines[1] + c.secret) + "\x00"
-        send_with_length(c.s, msg)
+    # Login request send
     if expName != "" or expRang != "":
         data = c.s.recv(BUFFER_SIZE)
         lines = data[2:].split('\x00')
@@ -70,6 +62,7 @@ def login_v6(name, pwd="", expName="", expRang=""):
         expect(lines[1], expName)
         expect(lines[2], expRang)
     return c
+
 
 class Conn:
 
@@ -98,40 +91,39 @@ class Conn:
 
         thread.start_new_thread(t, (self.s,))
 
+# The same again as the other file, but with a legacy client
+
 next_test("Unregistered login")
-c1 = login_v6("testuserB", "", "testuserB", "UNREGISTERED")
+c1 = login_legacy("testuserB", "", "testuserB", "UNREGISTERED")
 c1.close()
 
 next_test("Registered login")
-c1 = login_v6("testuser", "test", "testuser", "REGISTERED")
+c1 = login_legacy("testuser", "test", "testuser", "REGISTERED")
 c1.close()
 
 next_test("Unregistered login, trying a registered (=reserved) user name")
-c1 = login_v6("testuser", "", "testuser1", "UNREGISTERED")
+c1 = login_legacy("testuser", "", "testuser1", "UNREGISTERED")
 c1.close()
 
 next_test("Two unregistered logins for the same name")
-c1 = login_v6("testuserC", "", "testuserC", "UNREGISTERED")
-c2 = login_v6("testuserC", "", "testuserC1", "UNREGISTERED")
+c1 = login_legacy("testuserC", "", "testuserC", "UNREGISTERED")
+c1.pingpongthread()
+c2 = login_legacy("testuserC", "", "testuserC1", "UNREGISTERED")
 c2.close()
 c1.close()
 
 next_test("Two registered logins for the same name")
-c1 = login_v6("testuser", "test", "testuser", "REGISTERED")
+c1 = login_legacy("testuser", "test", "testuser", "REGISTERED")
 c1.pingpongthread()
-c2 = login_v6("testuser", "test", "testuser1", "UNREGISTERED")
+c2 = login_legacy("testuser", "test", "testuser1", "UNREGISTERED")
 c2.close()
 c1.close()
 
 next_test("Unregistered login after registered login with the same name")
-c1 = login_v6("testuser", "test", "testuser", "REGISTERED")
-c2 = login_v6("testuser", "", "testuser1", "UNREGISTERED")
+c1 = login_legacy("testuser", "test", "testuser", "REGISTERED")
+c1.pingpongthread()
+c2 = login_legacy("testuser", "", "testuser1", "UNREGISTERED")
 c2.close()
 c1.close()
-#print "Success1!"
-#sys.exit(0)
-#print "Success2!"
 
-# TODO: maybe testing clashes with IRC, maybe creating games
-# TODO: Remove TELL_IP command
 print "Success!"

@@ -42,7 +42,7 @@ def expect(got, should):
 
 # Logs in with the given name. If a password is given, try a registered login.
 # If expName or expRang is given, check the result
-def login_v6(name, pwd="", expName="", expRang=""):
+def login(name, pwd="", expName="", expRang=""):
     # Should result in: "\x00\x25LOGIN\x004\x00Pete\x00test[r1]\x00false\x00abcdef\x00"
     c = Conn()
     c.s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
@@ -71,6 +71,30 @@ def login_v6(name, pwd="", expName="", expRang=""):
         expect(lines[2], expRang)
     return c
 
+# Logs in with the given name. If a password is given, try a registered login.
+# If expName or expRang is given, check the result
+# Does a legacy login
+def login_legacy(name, pwd="", expName="", expRang=""):
+    # Should result in: "\x00\x25LOGIN\x000\x00Pete\x00test[r1]\x00false\x00abcdef\x00"
+    c = Conn()
+    c.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    c.s.connect((TCP_IP, TCP_PORT))
+    msg="LOGIN\x000\x00"+name+"\x00test[r1]\x00"
+    if pwd == "":
+        msg+="false\x00"
+    else:
+        msg+="true\x00"+pwd+"\x00"
+    send_with_length(c.s, msg)
+    # Login request send
+    if expName != "" or expRang != "":
+        data = c.s.recv(BUFFER_SIZE)
+        lines = data[2:].split('\x00')
+        expect(lines[0], "LOGIN")
+        expect(lines[1], expName)
+        expect(lines[2], expRang)
+    return c
+
+
 class Conn:
 
     def close(self):
@@ -98,40 +122,54 @@ class Conn:
 
         thread.start_new_thread(t, (self.s,))
 
-next_test("Unregistered login")
-c1 = login_v6("testuserB", "", "testuserB", "UNREGISTERED")
-c1.close()
+# Do new as well as old logins at the same time
 
-next_test("Registered login")
-c1 = login_v6("testuser", "test", "testuser", "REGISTERED")
-c1.close()
-
-next_test("Unregistered login, trying a registered (=reserved) user name")
-c1 = login_v6("testuser", "", "testuser1", "UNREGISTERED")
-c1.close()
-
-next_test("Two unregistered logins for the same name")
-c1 = login_v6("testuserC", "", "testuserC", "UNREGISTERED")
-c2 = login_v6("testuserC", "", "testuserC1", "UNREGISTERED")
-c2.close()
-c1.close()
-
-next_test("Two registered logins for the same name")
-c1 = login_v6("testuser", "test", "testuser", "REGISTERED")
+next_test("New login, than same login data with old login")
+c1 = login("testuserC", "", "testuserC", "UNREGISTERED")
 c1.pingpongthread()
-c2 = login_v6("testuser", "test", "testuser1", "UNREGISTERED")
+c2 = login_legacy("testuserC", "", "testuserC1", "UNREGISTERED")
 c2.close()
 c1.close()
 
-next_test("Unregistered login after registered login with the same name")
-c1 = login_v6("testuser", "test", "testuser", "REGISTERED")
-c2 = login_v6("testuser", "", "testuser1", "UNREGISTERED")
+next_test("Mixed new and old logins with same data")
+c1 = login("testuserC", "", "testuserC", "UNREGISTERED")
+c1.pingpongthread()
+c2 = login_legacy("testuserC", "", "testuserC1", "UNREGISTERED")
+c2.pingpongthread()
+c3 = login("testuserC", "", "testuserC2", "UNREGISTERED")
+c3.pingpongthread()
+c4 = login_legacy("testuserC", "", "testuserC3", "UNREGISTERED")
+c4.close()
+c3.close()
 c2.close()
 c1.close()
-#print "Success1!"
-#sys.exit(0)
-#print "Success2!"
 
-# TODO: maybe testing clashes with IRC, maybe creating games
-# TODO: Remove TELL_IP command
+next_test("First new registered than old registered login")
+c1 = login("testuser", "test", "testuser", "REGISTERED")
+c1.pingpongthread()
+c2 = login_legacy("testuser", "test", "testuser1", "UNREGISTERED")
+c2.close()
+c1.close()
+
+next_test("First old registered than new registered login")
+c1 = login_legacy("testuser", "test", "testuser", "REGISTERED")
+c1.pingpongthread()
+c2 = login("testuser", "test", "testuser1", "UNREGISTERED")
+c2.close()
+c1.close()
+
+next_test("First new registered than old unregistered login")
+c1 = login("testuser", "test", "testuser", "REGISTERED")
+c1.pingpongthread()
+c2 = login_legacy("testuser", "", "testuser1", "UNREGISTERED")
+c2.close()
+c1.close()
+
+next_test("First old registered than new unregistered login")
+c1 = login_legacy("testuser", "test", "testuser", "REGISTERED")
+c1.pingpongthread()
+c2 = login("testuser", "", "testuser1", "UNREGISTERED")
+c2.close()
+c1.close()
+
 print "Success!"
